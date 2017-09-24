@@ -1,10 +1,6 @@
 from bs4 import BeautifulSoup
 import requests
 
-#import numpy as np
-#import cv2
-#import matplotlib.pyplot as plt
-
 from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw 
@@ -14,10 +10,11 @@ from io import BytesIO
 
 from tld import get_tld
 from tld.utils import update_tld_names
-update_tld_names()
+# update_tld_names()
 
 import re
 import json
+import os
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font
@@ -25,15 +22,6 @@ from openpyxl.styles import Font
 from pathlib import Path
 
 import time
-# import logging
-
-# pip install bs4 requests pillow tld openpyxl splinter
-
-# logging.basicConfig(filename="logfile.txt")
-# stderrLogger=logging.StreamHandler()
-# stderrLogger.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
-# logging.getLogger().addHandler(stderrLogger)
-
 import logging
 import sys
 
@@ -47,11 +35,21 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 root.addHandler(ch)
 
-# create file handler which logs even debug messages
 fh = logging.FileHandler('report.log')
 fh.setLevel(logging.DEBUG)
 fh.setFormatter(formatter)
 root.addHandler(fh)
+
+
+def load_config():
+	global config
+	try:
+		with open('config.json', 'r') as f:
+			config = json.load(f)
+	except IOError as e:
+		logging.exception(e)
+
+load_config()
 
 
 def resource_path(relative_path):
@@ -65,17 +63,12 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-#executable_path = {'executable_path':'/home/horo/bin/phantomjs', 'load_images': False}
 executable_path = {'executable_path': resource_path('bin/phantomjs'), 'load_images': False}
 
 def get_links_from_xlsx(file_name):
     wb = load_workbook(file_name)
     ws = wb.active
     rows = [row[0].value for row in ws.rows]
-    # rows = []
-    # for row in ws.rows:
-        # l = [cell.value for cell in row]
-        # rows.append(l)
     return rows
 
 
@@ -131,19 +124,6 @@ def parse_link(url):
 		# price = price_el.find_by_css('.tb-rmb').html + price_el.find_by_css('span').html
 		price = re.sub(r'<.*?>', '', price_el.html)
 		price = re.sub(r'\s+', '', price.replace('\n', ''))
-
-		# img_el = soup.select('#J_ThumbView')[0]
-		# img_url = img_el['src']
-		# m = re.search('sibApi:"(.*)"', r.text)
-		# url2 = 'https:' + m.group(1)
-		# global g, r2
-		# r2 = requests.get(url2, headers={'referer': url})
-		# g = json.loads(r2.text)
-		# try:
-		# 	price = g['data']['promotionPrice']['skuPromotions']['def'][0]['price']
-		# except:
-		# 	price = soup.select('.price-show .tb-rmb-num')[0].get_text()
-		# 	price = re.sub(r'\s+', ' ', price.replace('\n', ''))
 	elif host == 'tmall.com':
 		init_br()
 		img_el = br.find_by_css('#J_ImgBooth')
@@ -208,36 +188,17 @@ def draw_img(img, text, type):
 	new_img = img.resize(templateImg.size, Image.LANCZOS)
 	new_img.paste(templateImg, None, templateImg)
 	draw = ImageDraw.Draw(new_img)
-	if type == 'amazon.com':
-		font = ImageFont.truetype("FreeMono.ttf", 30, encoding="unic")
-		draw.text((160, 15), text, (0,0,255), font=font)
-	elif type == 'aliexpress.com':
-		font = ImageFont.truetype("FreeMono.ttf", 30, encoding="unic")
-		draw.text((870, 870), text, (0,0,255), font=font)
-	elif type == 'alibaba.com':
-		font = ImageFont.truetype("FreeMono.ttf", 30, encoding="unic")
-		draw.text((150, 100), text, (0,0,255), font=font)
-	elif type == 'taobao.com':
-		font = ImageFont.truetype("FreeMono.ttf", 30, encoding="unic")
-		draw.text((640, 60), text, (0,0,255), font=font)
-	elif type == 'ebay.com':
-		font = ImageFont.truetype("FreeMono.ttf", 30, encoding="unic")
-		draw.text((680, 720), text, (255,255,255), font=font)
-	elif type == 'jollychic.com':
-		font = ImageFont.truetype("FreeMono.ttf", 30, encoding="unic")
-		draw.text((780, 880), text, (0,0,255), font=font)
-	elif type == 'iherb.com':
-		font = ImageFont.truetype("FreeMono.ttf", 30, encoding="unic")
-		draw.text((320, 100), text, (0,0,255), font=font)
-	elif type == 'wyesstyle.com':
-		font = ImageFont.truetype("FreeMono.ttf", 30, encoding="unic")
-		draw.text((300, 0), text, (0,0,255), font=font)
+
+	cfg = config.get(type, { "x": 0, "y": 0, "color": [255,0,0], "font": "FreeMono.ttf", "fontSize": 30 })
+
+	font = ImageFont.truetype(cfg['font'], cfg['fontSize'], encoding="unic")
+	draw.text((cfg['x'], cfg['y']), text, tuple(cfg['color']), font=font)
 	return new_img
 
 
 
 in_file_name = 'in.xlsx'
-delay = 1
+delay = config.get('delay', 1)
 out_dir = Path('./out')
 
 links = get_links_from_xlsx(in_file_name)
@@ -247,19 +208,10 @@ if not out_dir.exists():
 	out_dir.mkdir()
 
 
-# links = [ 'https://www.alibaba.com/product-detail/video-call-infrared-vision-outdoor-security_60495998373.html?spm=a2700.7724856.main07.23.1a9823faXfrma&s=p' ]
-
-# img = Image.open("test1.jpg")
-# new_img = draw_img(img, 'eeer', 'alibaba.com')
-# new_img.show()
-# 1/0
-
 
 err_i = []
 
 for i, link in enumerate(links):
-	# if not i == 14 and not i == 15:
-	# 	continue
 	try:
 		img, price, domain = parse_link(link)
 		new_img = draw_img(img, price, domain)
@@ -276,26 +228,3 @@ logging.info('Fail:')
 for i in err_i:
 	logging.error('{}: {}'.format(i+1, links[i]))
 
-
-# price = '1.22'
-
-# img = Image.open("416pfvtX78L._SY300_QL70_.jpg")
-# draw = ImageDraw.Draw(img)
-# # font = ImageFont.truetype(<font-file>, <font-size>)
-# font = ImageFont.truetype("FreeMono.ttf", 15, encoding="unic")#ImageFont.load_default()
-# # draw.text((x, y),"Sample Text",(r,g,b))
-# draw.text((0, 0), price, (255,0,0), font=font)
-# img.save('sample-out.jpg')
-# img.show()
-
-# r_img = requests.get(img_url)
-# if r_img.status_code == 200:
-#     with open("/home/horo/pyimg/1.jpg", 'wb') as f:
-#         f.write(r_img.content)
-# np.asarray(bytearray(r_img.content), dtype=np.uint8)
-# image_array = np.asarray(bytearray(r_img.content), dtype=np.uint8)
-# img = cv2.imdecode(image_array, -1)
-# texted_image = cv2.putText(img=np.copy(img), text=price, org=(50,100),fontFace=3, fontScale=2, color=(0,0,255), thickness=2)
-
-# plt.imshow(texted_image)
-# plt.show()
